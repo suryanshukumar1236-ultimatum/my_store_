@@ -14,7 +14,26 @@
   </head>
   <body class="bg-slate-50">
     <div id="root"></div>
-    <!-- Load your 1200-line App.jsx directly -->
-    <script type="text/babel" src="/App.jsx"></script>
+
+    <!-- PASTE YOUR ENTIRE 1,200-LINE APP CODE DIRECTLY HERE INSIDE THIS SCRIPT TAG -->
+    <script type="text/babel">
+      function App() {
+        // Paste all your states, products, admin modal, and components here!
+        // (Make sure to remove the 'export default App;' line if it's at the bottom)
+
+        return (
+          <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col justify-between font-sans">
+            <header className="bg-white shadow-xs border-b border-rose-100 p-4 text-center">
+              <h1 className="text-2xl font-extrabold text-slate-900">
+                PRATIMA'S <span className="text-rose-600">HOMESALE STORE</span>
+              </h1>
+              <p className="text-xs text-amber-600">Store is loading successfully!</p>
+            </header>
+          </div>
+        );
+      }
+
+      ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
   </body>
 </html>
