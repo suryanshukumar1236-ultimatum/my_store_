@@ -1,0 +1,1296 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  ShoppingBag, Search, Lock, User, LogOut, Plus, Trash2, Edit, Check, X, 
+  ChevronRight, Phone, MapPin, Tag, Image as ImageIcon, MessageSquare, 
+  HelpCircle, Eye, RefreshCw, AlertCircle, Sparkles, Filter, CheckCircle2,
+  BookmarkPlus, Heart, ShieldCheck
+} from 'lucide-react';
+
+// --- INITIALIZE FIREBASE FROM CDN SAFELY FOR SINGLE-FILE REACT ---
+const firebaseConfig = {
+  apiKey: "AIzaSyCN7SX0pcXizTZUZFdHNww34I55OvlKqkk",
+  authDomain: "pratima-homesale-shop.firebaseapp.com",
+  projectId: "pratima-homesale-shop",
+  storageBucket: "pratima-homesale-shop.firebasestorage.app",
+  messagingSenderId: "824275853332",
+  appId: "1:824275853332:web:951ed7423e9ddcc0138701",
+  measurementId: "G-1FNF7V0GSJ"
+};
+
+// Initial Seed Products
+const INITIAL_PRODUCTS = [
+  {
+    id: 'prod-1',
+    name: 'Kanjeevaram Soft Silk Saree',
+    category: 'Saree',
+    price: 2499,
+    originalPrice: 3999,
+    inStock: true,
+    image: 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&q=80&w=800',
+    description: 'Rich weaving with golden zari border. Perfect for festive celebrations and weddings.',
+    tags: ['Best Seller', 'Silk']
+  },
+  {
+    id: 'prod-2',
+    name: 'Anarkali Kurti Set with Dupatta',
+    category: 'Kurti',
+    price: 1299,
+    originalPrice: 1999,
+    inStock: true,
+    image: 'https://images.unsplash.com/photo-1583391733956-3750e0ff4e8b?auto=format&fit=crop&q=80&w=800',
+    description: 'Pure cotton printed Anarkali gown with matching dupatta and pants.',
+    tags: ['New Arrival']
+  },
+  {
+    id: 'prod-3',
+    name: 'Designer Party Wear Lehenga',
+    category: 'Lehenga',
+    price: 4999,
+    originalPrice: 7500,
+    inStock: false,
+    image: 'https://images.unsplash.com/photo-1595777457583-95e059d581b8?auto=format&fit=crop&q=80&w=800',
+    description: 'Heavy mirror work embroidered velvet lehenga set.',
+    tags: ['Party Wear']
+  }
+];
+
+const INITIAL_CATEGORIES = ['All', 'Saree', 'Kurti', 'Lehenga', 'Dupatta', 'Bags & Accessories'];
+
+export default function App() {
+  // Firebase Auth & App state
+  const [firebaseLoaded, setFirebaseLoaded] = useState(false);
+  const [authObj, setAuthObj] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem('pratima_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  // App Core States
+  const [products, setProducts] = useState(() => {
+    const saved = localStorage.getItem('pratima_products');
+    return saved ? JSON.parse(saved) : INITIAL_PRODUCTS;
+  });
+
+  const [categories, setCategories] = useState(() => {
+    const saved = localStorage.getItem('pratima_categories');
+    return saved ? JSON.parse(saved) : INITIAL_CATEGORIES;
+  });
+
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState('shop'); // 'shop', 'qa', 'holds'
+
+  // Admin Portal States
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(() => {
+    return localStorage.getItem('pratima_admin_active') === 'true';
+  });
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [adminPasswordInput, setAdminPasswordInput] = useState('');
+  const [adminConfirmPassword, setAdminConfirmPassword] = useState('');
+  const [adminAuthError, setAdminAuthError] = useState('');
+  
+  // Custom Saved Password check
+  const [savedAdminPassword, setSavedAdminPassword] = useState(() => {
+    return localStorage.getItem('pratima_admin_pass') || '';
+  });
+
+  // Modals & User Auth Modals
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPass, setAuthPass] = useState('');
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'signup'
+  const [authMessage, setAuthMessage] = useState({ type: '', text: '' });
+
+  // Store Management Form
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [newCatName, setNewCatName] = useState('');
+  
+  // Customer Hold / Reservation Modal
+  const [holdingProduct, setHoldingProduct] = useState(null);
+  const [holdCustomerName, setHoldCustomerName] = useState('');
+  const [holdCustomerPhone, setHoldCustomerPhone] = useState('');
+  const [holdsList, setHoldsList] = useState(() => {
+    const saved = localStorage.getItem('pratima_holds');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Store Q&A / Queries
+  const [qaList, setQaList] = useState(() => {
+    const saved = localStorage.getItem('pratima_qa');
+    return saved ? JSON.parse(saved) : [
+      { id: '1', question: 'Do you offer home delivery in the local area?', answer: 'Yes! We offer free home delivery within 5 km on orders above ₹1000.', date: '2026-03-10' },
+      { id: '2', question: 'Are prices negotiable on bulk purchase?', answer: 'Yes, please visit our store or call us for wedding/bulk order discounts.', date: '2026-03-12' }
+    ];
+  });
+  const [newQuestion, setNewQuestion] = useState('');
+  const [adminAnswerText, setAdminAnswerText] = useState({});
+
+  // Product Form State
+  const [prodForm, setProdForm] = useState({
+    name: '',
+    category: 'Saree',
+    price: '',
+    originalPrice: '',
+    inStock: true,
+    image: '',
+    description: '',
+    tags: ''
+  });
+
+  // Save changes to localStorage
+  useEffect(() => {
+    localStorage.setItem('pratima_products', JSON.stringify(products));
+  }, [products]);
+
+  useEffect(() => {
+    localStorage.setItem('pratima_categories', JSON.stringify(categories));
+  }, [categories]);
+
+  useEffect(() => {
+    localStorage.setItem('pratima_holds', JSON.stringify(holdsList));
+  }, [holdsList]);
+
+  useEffect(() => {
+    localStorage.setItem('pratima_qa', JSON.stringify(qaList));
+  }, [qaList]);
+
+  // Keyboard shortcut for Admin (Ctrl + Shift + A)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        setShowAdminModal(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Dynamically Load Firebase Modular Web SDK for Single File React
+  useEffect(() => {
+    const loadFirebase = async () => {
+      try {
+        if (!window.firebase) {
+          const appScript = document.createElement('script');
+          appScript.src = "https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js";
+          document.head.appendChild(appScript);
+
+          appScript.onload = () => {
+            const authScript = document.createElement('script');
+            authScript.src = "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js";
+            document.head.appendChild(authScript);
+
+            authScript.onload = () => {
+              if (!window.firebase.apps.length) {
+                window.firebase.initializeApp(firebaseConfig);
+              }
+              const auth = window.firebase.auth();
+              setAuthObj(auth);
+              setFirebaseLoaded(true);
+
+              // Listen to auth changes
+              auth.onAuthStateChanged((user) => {
+                if (user) {
+                  const userData = {
+                    uid: user.uid,
+                    email: user.email,
+                    displayName: user.displayName || user.email.split('@')[0],
+                    photoURL: user.photoURL
+                  };
+                  setCurrentUser(userData);
+                  localStorage.setItem('pratima_user', JSON.stringify(userData));
+                } else {
+                  // Keep local user if fallback exists or clear
+                }
+              });
+            };
+          };
+        }
+      } catch (err) {
+        console.error("Firebase SDK Load error:", err);
+      }
+    };
+    loadFirebase();
+  }, []);
+
+  // Handle Firebase Email/Password Sign in
+  const handleEmailAuth = async (e) => {
+    e.preventDefault();
+    setAuthMessage({ type: 'info', text: 'Connecting to Firebase...' });
+
+    if (!authObj) {
+      // Fallback for offline or local preview
+      const fallbackUser = { uid: 'demo-123', email: authEmail, displayName: authEmail.split('@')[0] };
+      setCurrentUser(fallbackUser);
+      localStorage.setItem('pratima_user', JSON.stringify(fallbackUser));
+      setShowAuthModal(false);
+      setAuthMessage({ type: '', text: '' });
+      return;
+    }
+
+    try {
+      if (authMode === 'login') {
+        await authObj.signInWithEmailAndPassword(authEmail, authPass);
+      } else {
+        await authObj.createUserWithEmailAndPassword(authEmail, authPass);
+      }
+      setShowAuthModal(false);
+      setAuthMessage({ type: '', text: '' });
+    } catch (err) {
+      setAuthMessage({ type: 'error', text: err.message });
+    }
+  };
+
+  // Handle Firebase Google Sign-In
+  const handleGoogleSignIn = async () => {
+    if (!authObj) {
+      const demoUser = {
+        uid: 'google-demo-888',
+        email: 'customer@gmail.com',
+        displayName: 'Suryanshu Kumar',
+        photoURL: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100'
+      };
+      setCurrentUser(demoUser);
+      localStorage.setItem('pratima_user', JSON.stringify(demoUser));
+      setShowAuthModal(false);
+      return;
+    }
+
+    try {
+      const provider = new window.firebase.auth.GoogleAuthProvider();
+      await authObj.signInWithPopup(provider);
+      setShowAuthModal(false);
+    } catch (err) {
+      setAuthMessage({ type: 'error', text: err.message });
+    }
+  };
+
+  // User Logout
+  const handleUserLogout = async () => {
+    if (authObj) {
+      await authObj.signOut();
+    }
+    setCurrentUser(null);
+    localStorage.removeItem('pratima_user');
+  };
+
+  // Admin Auth Handler
+  const handleAdminAuthSubmit = (e) => {
+    e.preventDefault();
+    setAdminAuthError('');
+
+    if (!savedAdminPassword) {
+      // Setup Initial Password
+      if (adminPasswordInput.length < 4) {
+        setAdminAuthError('Password must be at least 4 characters long.');
+        return;
+      }
+      if (adminPasswordInput !== adminConfirmPassword) {
+        setAdminAuthError('Passwords do not match!');
+        return;
+      }
+      localStorage.setItem('pratima_admin_pass', adminPasswordInput);
+      setSavedAdminPassword(adminPasswordInput);
+      setIsAdminLoggedIn(true);
+      localStorage.setItem('pratima_admin_active', 'true');
+      setShowAdminModal(false);
+      setAdminPasswordInput('');
+      setAdminConfirmPassword('');
+    } else {
+      // Validate Existing Password
+      if (adminPasswordInput === savedAdminPassword) {
+        setIsAdminLoggedIn(true);
+        localStorage.setItem('pratima_admin_active', 'true');
+        setShowAdminModal(false);
+        setAdminPasswordInput('');
+      } else {
+        setAdminAuthError('Incorrect Password. Please try again.');
+      }
+    }
+  };
+
+  // Product CRUD
+  const handleSaveProduct = (e) => {
+    e.preventDefault();
+    if (!prodForm.name || !prodForm.price) return;
+
+    const newProd = {
+      id: editingProduct ? editingProduct.id : 'prod-' + Date.now(),
+      name: prodForm.name,
+      category: prodForm.category,
+      price: parseFloat(prodForm.price),
+      originalPrice: prodForm.originalPrice ? parseFloat(prodForm.originalPrice) : null,
+      inStock: prodForm.inStock,
+      image: prodForm.image || 'https://images.unsplash.com/photo-1610030469983-98e550d6193c?auto=format&fit=crop&q=80&w=800',
+      description: prodForm.description,
+      tags: prodForm.tags ? prodForm.tags.split(',').map(t => t.trim()) : []
+    };
+
+    if (editingProduct) {
+      setProducts(products.map(p => p.id === editingProduct.id ? newProd : p));
+      setEditingProduct(null);
+    } else {
+      setProducts([newProd, ...products]);
+    }
+
+    setProdForm({
+      name: '', category: categories[1] || 'Saree', price: '', originalPrice: '',
+      inStock: true, image: '', description: '', tags: ''
+    });
+  };
+
+  const handleEditClick = (product) => {
+    setEditingProduct(product);
+    setProdForm({
+      name: product.name,
+      category: product.category,
+      price: product.price,
+      originalPrice: product.originalPrice || '',
+      inStock: product.inStock,
+      image: product.image,
+      description: product.description,
+      tags: product.tags ? product.tags.join(', ') : ''
+    });
+  };
+
+  const handleDeleteProduct = (id) => {
+    if (window.confirm('Are you sure you want to delete this product?')) {
+      setProducts(products.filter(p => p.id !== id));
+    }
+  };
+
+  const toggleStockStatus = (id) => {
+    setProducts(products.map(p => p.id === id ? { ...p, inStock: !p.inStock } : p));
+  };
+
+  // Category Manager
+  const handleAddCategory = (e) => {
+    e.preventDefault();
+    if (newCatName && !categories.includes(newCatName.trim())) {
+      setCategories([...categories, newCatName.trim()]);
+      setNewCatName('');
+    }
+  };
+
+  const handleDeleteCategory = (catToDelete) => {
+    if (catToDelete === 'All') return;
+    setCategories(categories.filter(c => c !== catToDelete));
+    if (selectedCategory === catToDelete) setSelectedCategory('All');
+  };
+
+  // Image File Upload Simulator
+  const handleImageFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProdForm({ ...prodForm, image: reader.result });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Customer Hold / Reservation Submission
+  const handleReserveSubmit = (e) => {
+    e.preventDefault();
+    if (!holdCustomerName || !holdCustomerPhone || !holdingProduct) return;
+
+    const newHold = {
+      id: 'hold-' + Date.now(),
+      productId: holdingProduct.id,
+      productName: holdingProduct.name,
+      price: holdingProduct.price,
+      customerName: holdCustomerName,
+      customerPhone: holdCustomerPhone,
+      date: new Date().toLocaleDateString('en-IN'),
+      status: 'Pending'
+    };
+
+    setHoldsList([newHold, ...holdsList]);
+    alert(`Success! ${holdingProduct.name} has been reserved for ${holdCustomerName}. The shopkeeper will contact you at ${holdCustomerPhone} shortly.`);
+    setHoldingProduct(null);
+    setHoldCustomerName('');
+    setHoldCustomerPhone('');
+  };
+
+  // Submit Q&A
+  const handleAddQuestion = (e) => {
+    e.preventDefault();
+    if (!newQuestion.trim()) return;
+
+    const newQaItem = {
+      id: 'qa-' + Date.now(),
+      question: newQuestion,
+      answer: null,
+      date: new Date().toLocaleDateString('en-IN')
+    };
+
+    setQaList([newQaItem, ...qaList]);
+    setNewQuestion('');
+  };
+
+  // Admin Reply to Q&A
+  const handleAdminAnswerSubmit = (qaId) => {
+    const answer = adminAnswerText[qaId];
+    if (!answer) return;
+
+    setQaList(qaList.map(q => q.id === qaId ? { ...q, answer: answer } : q));
+    setAdminAnswerText({ ...adminAnswerText, [qaId]: '' });
+  };
+
+  // Filter Products
+  const filteredProducts = products.filter(p => {
+    const matchesCategory = selectedCategory === 'All' || p.category === selectedCategory;
+    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          p.description.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans flex flex-col justify-between">
+      
+      {/* --- HEADER --- */}
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md shadow-xs border-b border-rose-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex items-center justify-between gap-4">
+          
+          {/* Logo */}
+          <div className="flex items-center space-x-3 cursor-pointer" onClick={() => { setActiveTab('shop'); setSelectedCategory('All'); }}>
+            <div className="bg-gradient-to-tr from-rose-600 to-amber-500 text-white p-2.5 rounded-xl shadow-md">
+              <ShoppingBag className="w-6 h-6" />
+            </div>
+            <div>
+              <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900 leading-none">
+                PRATIMA'S <span className="text-rose-600">HOMESALE</span>
+              </h1>
+              <p className="text-xs text-amber-600 font-medium tracking-wide">AUTHENTIC HOME BOUTIQUE</p>
+            </div>
+          </div>
+
+          {/* Search Bar (Desktop) */}
+          <div className="hidden md:flex flex-1 max-w-md mx-6 relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search sarees, kurtis, lehengas..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-slate-100 border border-transparent rounded-full text-sm focus:outline-none focus:bg-white focus:border-rose-300 focus:ring-2 focus:ring-rose-100 transition"
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* User Auth & Quick Navigation */}
+          <div className="flex items-center space-x-3">
+            {/* Firebase Auth Status Button */}
+            {currentUser ? (
+              <div className="flex items-center space-x-2 bg-rose-50 border border-rose-200 rounded-full py-1.5 px-3">
+                {currentUser.photoURL ? (
+                  <img src={currentUser.photoURL} alt="Avatar" className="w-6 h-6 rounded-full" />
+                ) : (
+                  <User className="w-4 h-4 text-rose-600" />
+                )}
+                <span className="text-xs font-semibold text-rose-900 truncate max-w-[100px]">
+                  {currentUser.displayName}
+                </span>
+                <button 
+                  onClick={handleUserLogout} 
+                  title="Sign Out"
+                  className="text-rose-500 hover:text-rose-700 p-0.5"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button 
+                onClick={() => setShowAuthModal(true)}
+                className="flex items-center space-x-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-semibold px-4 py-2 rounded-full shadow-sm hover:shadow transition"
+              >
+                <User className="w-4 h-4" />
+                <span>Customer Sign In</span>
+              </button>
+            )}
+
+            {/* Admin Badge */}
+            {isAdminLoggedIn && (
+              <div className="flex items-center space-x-1 bg-amber-500 text-white text-xs font-bold px-2.5 py-1.5 rounded-full shadow-sm">
+                <Lock className="w-3.5 h-3.5" />
+                <span>ADMIN</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Mobile Search Bar */}
+        <div className="md:hidden px-4 pb-3">
+          <div className="relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search products..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-slate-100 border border-transparent rounded-full text-sm focus:outline-none focus:bg-white focus:border-rose-300"
+            />
+          </div>
+        </div>
+      </header>
+
+      {/* --- HERO BANNER --- */}
+      <section className="bg-gradient-to-r from-rose-900 via-rose-800 to-amber-900 text-white py-8 px-4 sm:px-6 relative overflow-hidden">
+        <div className="absolute right-0 top-0 translate-x-12 -translate-y-12 opacity-10 pointer-events-none">
+          <Sparkles className="w-96 h-96" />
+        </div>
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="space-y-2 text-center md:text-left">
+            <span className="inline-block bg-amber-400/20 text-amber-200 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider border border-amber-400/30">
+              Fresh Ethnic Wear Arrival
+            </span>
+            <h2 className="text-2xl sm:text-4xl font-extrabold tracking-tight">
+              Handpicked Sarees, Kurtis & Designer Wear
+            </h2>
+            <p className="text-rose-100 text-sm sm:text-base max-w-xl">
+              Authentic home sale collection at wholesale prices. Inspect in-person or hold your item online for store pickup!
+            </p>
+          </div>
+          
+          <div className="flex items-center space-x-3 bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/20">
+            <Phone className="w-8 h-8 text-amber-300 animate-pulse" />
+            <div>
+              <p className="text-xs text-rose-200">Call / WhatsApp to Visit Store:</p>
+              <p className="text-base font-bold text-white">+91 98765 43210</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* --- MAIN NAVIGATION TABS --- */}
+      <div className="bg-white border-b border-slate-200 sticky top-[65px] z-30 shadow-xs">
+        <div className="max-w-7xl mx-auto px-4 flex items-center justify-between overflow-x-auto no-scrollbar">
+          <div className="flex space-x-6">
+            <button 
+              onClick={() => setActiveTab('shop')}
+              className={`py-3 px-2 text-sm font-semibold border-b-2 flex items-center space-x-2 whitespace-nowrap ${
+                activeTab === 'shop' 
+                  ? 'border-rose-600 text-rose-600' 
+                  : 'border-transparent text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <ShoppingBag className="w-4 h-4" />
+              <span>Collection Storefront</span>
+            </button>
+
+            <button 
+              onClick={() => setActiveTab('qa')}
+              className={`py-3 px-2 text-sm font-semibold border-b-2 flex items-center space-x-2 whitespace-nowrap ${
+                activeTab === 'qa' 
+                  ? 'border-rose-600 text-rose-600' 
+                  : 'border-transparent text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <HelpCircle className="w-4 h-4" />
+              <span>Customer Help & Q&A</span>
+              {qaList.length > 0 && (
+                <span className="bg-rose-100 text-rose-700 text-xs px-2 py-0.5 rounded-full font-bold">
+                  {qaList.length}
+                </span>
+              )}
+            </button>
+
+            {isAdminLoggedIn && (
+              <button 
+                onClick={() => setActiveTab('holds')}
+                className={`py-3 px-2 text-sm font-semibold border-b-2 flex items-center space-x-2 whitespace-nowrap ${
+                  activeTab === 'holds' 
+                    ? 'border-amber-600 text-amber-600' 
+                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <BookmarkPlus className="w-4 h-4" />
+                <span>Store Holds / Reservations</span>
+                {holdsList.length > 0 && (
+                  <span className="bg-amber-100 text-amber-800 text-xs px-2 py-0.5 rounded-full font-bold">
+                    {holdsList.length}
+                  </span>
+                )}
+              </button>
+            )}
+          </div>
+
+          {/* Quick Admin Toggle Status */}
+          {isAdminLoggedIn && (
+            <button 
+              onClick={() => { setIsAdminLoggedIn(false); localStorage.removeItem('pratima_admin_active'); }}
+              className="text-xs text-red-600 hover:underline font-semibold whitespace-nowrap"
+            >
+              Exit Admin Mode
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* --- CONTENT BODY --- */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1">
+        
+        {/* ================= SHOP TAB ================= */}
+        {activeTab === 'shop' && (
+          <div>
+            {/* Category Filter Pills */}
+            <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+              <div className="flex items-center space-x-2 overflow-x-auto pb-2 w-full sm:w-auto no-scrollbar">
+                <Filter className="w-4 h-4 text-slate-400 shrink-0 mr-1" />
+                {categories.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition whitespace-nowrap ${
+                      selectedCategory === cat 
+                        ? 'bg-rose-600 text-white shadow-sm' 
+                        : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              {/* Admin Manage Category Action */}
+              {isAdminLoggedIn && (
+                <div className="bg-amber-50 border border-amber-200 p-2 rounded-xl flex items-center space-x-2">
+                  <input 
+                    type="text" 
+                    placeholder="New category..." 
+                    value={newCatName}
+                    onChange={(e) => setNewCatName(e.target.value)}
+                    className="px-3 py-1 bg-white border border-amber-300 rounded-lg text-xs focus:outline-none"
+                  />
+                  <button 
+                    onClick={handleAddCategory}
+                    className="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded-lg text-xs font-bold"
+                  >
+                    + Add
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Admin Add / Edit Product Form Container */}
+            {isAdminLoggedIn && (
+              <div className="mb-8 bg-amber-50/70 border-2 border-dashed border-amber-300 rounded-2xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-base font-bold text-amber-900 flex items-center space-x-2">
+                    <Plus className="w-5 h-5 text-amber-600" />
+                    <span>{editingProduct ? 'Edit Product' : 'Add New Item to Shop'}</span>
+                  </h3>
+                  {editingProduct && (
+                    <button 
+                      onClick={() => setEditingProduct(null)}
+                      className="text-xs text-slate-500 hover:underline"
+                    >
+                      Cancel Editing
+                    </button>
+                  )}
+                </div>
+
+                <form onSubmit={handleSaveProduct} className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Product Title *</label>
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="e.g. Banarasi Silk Saree"
+                      value={prodForm.name}
+                      onChange={(e) => setProdForm({ ...prodForm, name: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Category *</label>
+                    <select 
+                      value={prodForm.category}
+                      onChange={(e) => setProdForm({ ...prodForm, category: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-400"
+                    >
+                      {categories.filter(c => c !== 'All').map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Price (₹) *</label>
+                    <input 
+                      type="number" 
+                      required
+                      placeholder="e.g. 1999"
+                      value={prodForm.price}
+                      onChange={(e) => setProdForm({ ...prodForm, price: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Original MRP Price (₹) (Optional)</label>
+                    <input 
+                      type="number" 
+                      placeholder="e.g. 2999"
+                      value={prodForm.originalPrice}
+                      onChange={(e) => setProdForm({ ...prodForm, originalPrice: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-amber-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Product Photo (URL or Gallery Upload)</label>
+                    <div className="flex items-center space-x-2">
+                      <input 
+                        type="text" 
+                        placeholder="Image URL..."
+                        value={prodForm.image}
+                        onChange={(e) => setProdForm({ ...prodForm, image: e.target.value })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm"
+                      />
+                      <label className="cursor-pointer bg-slate-200 hover:bg-slate-300 p-2 rounded-lg text-xs font-bold text-slate-700 shrink-0">
+                        Upload
+                        <input type="file" accept="image/*" onChange={handleImageFileChange} className="hidden" />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Stock Availability</label>
+                    <button 
+                      type="button"
+                      onClick={() => setProdForm({ ...prodForm, inStock: !prodForm.inStock })}
+                      className={`w-full py-2 rounded-lg text-sm font-bold flex items-center justify-center space-x-2 ${
+                        prodForm.inStock ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                      }`}
+                    >
+                      {prodForm.inStock ? <CheckCircle2 className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                      <span>{prodForm.inStock ? 'In Stock (Available)' : 'Out of Stock'}</span>
+                    </button>
+                  </div>
+
+                  <div className="md:col-span-3">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Description</label>
+                    <textarea 
+                      rows="2"
+                      placeholder="Add product details, fabric, work details..."
+                      value={prodForm.description}
+                      onChange={(e) => setProdForm({ ...prodForm, description: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm"
+                    />
+                  </div>
+
+                  <div className="md:col-span-3 flex justify-end">
+                    <button 
+                      type="submit"
+                      className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-6 py-2.5 rounded-xl text-sm shadow-md transition"
+                    >
+                      {editingProduct ? 'Update Product' : 'Publish Product to Store'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* Products Grid */}
+            {filteredProducts.length === 0 ? (
+              <div className="text-center py-16 bg-white rounded-3xl border border-slate-200 p-8">
+                <ShoppingBag className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <h3 className="text-lg font-bold text-slate-800">No Products Found</h3>
+                <p className="text-sm text-slate-500 max-w-md mx-auto mt-1">
+                  Try changing your category filter or search term.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredProducts.map((product) => (
+                  <div 
+                    key={product.id} 
+                    className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs hover:shadow-md transition flex flex-col justify-between group relative"
+                  >
+                    {/* Admin Direct Action Buttons */}
+                    {isAdminLoggedIn && (
+                      <div className="absolute top-3 right-3 z-10 flex space-x-1.5 bg-white/90 backdrop-blur-xs p-1 rounded-lg shadow">
+                        <button 
+                          onClick={() => toggleStockStatus(product.id)}
+                          title="Toggle Stock"
+                          className={`p-1.5 rounded-md text-xs font-bold ${
+                            product.inStock ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                          }`}
+                        >
+                          {product.inStock ? 'In Stock' : 'Out'}
+                        </button>
+                        <button 
+                          onClick={() => handleEditClick(product)}
+                          className="p-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-md"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteProduct(product.id)}
+                          className="p-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-md"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Image & Badge */}
+                    <div className="relative aspect-4/3 bg-slate-100 overflow-hidden">
+                      <img 
+                        src={product.image} 
+                        alt={product.name} 
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                      />
+                      {!product.inStock && (
+                        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center">
+                          <span className="bg-red-600 text-white text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider">
+                            Sold Out
+                          </span>
+                        </div>
+                      )}
+                      <div className="absolute bottom-2 left-2 flex flex-wrap gap-1">
+                        <span className="bg-white/90 backdrop-blur-xs text-slate-800 text-[10px] font-bold px-2 py-0.5 rounded-md">
+                          {product.category}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Card Content */}
+                    <div className="p-4 flex-1 flex flex-col justify-between">
+                      <div>
+                        <h3 className="font-bold text-slate-900 text-base line-clamp-1">
+                          {product.name}
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+                          {product.description}
+                        </p>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                        <div>
+                          <div className="flex items-baseline space-x-1.5">
+                            <span className="text-lg font-extrabold text-slate-900">
+                              ₹{product.price}
+                            </span>
+                            {product.originalPrice && (
+                              <span className="text-xs text-slate-400 line-through">
+                                ₹{product.originalPrice}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Customer Hold Button */}
+                        <button 
+                          disabled={!product.inStock}
+                          onClick={() => setHoldingProduct(product)}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition ${
+                            product.inStock 
+                              ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-sm' 
+                              : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                          }`}
+                        >
+                          <BookmarkPlus className="w-3.5 h-3.5" />
+                          <span>Hold Item</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================= Q&A HELP TAB ================= */}
+        {activeTab === 'qa' && (
+          <div className="max-w-3xl mx-auto space-y-6">
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+              <h3 className="text-lg font-bold text-slate-900 mb-2 flex items-center space-x-2">
+                <HelpCircle className="w-5 h-5 text-rose-600" />
+                <span>Ask the Shopkeeper a Question</span>
+              </h3>
+              <p className="text-xs text-slate-500 mb-4">
+                Have questions about fabric, store location, or custom sizes? Ask here directly!
+              </p>
+
+              <form onSubmit={handleAddQuestion} className="flex space-x-2">
+                <input 
+                  type="text" 
+                  placeholder="Type your question here..."
+                  value={newQuestion}
+                  onChange={(e) => setNewQuestion(e.target.value)}
+                  className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:bg-white focus:border-rose-300"
+                />
+                <button 
+                  type="submit"
+                  className="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm"
+                >
+                  Ask
+                </button>
+              </form>
+            </div>
+
+            {/* Questions List */}
+            <div className="space-y-4">
+              <h4 className="font-bold text-slate-800 text-sm">Frequently Asked Questions & Answers</h4>
+              {qaList.map((item) => (
+                <div key={item.id} className="bg-white p-4 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex items-start justify-between">
+                    <p className="text-sm font-bold text-slate-900">Q: {item.question}</p>
+                    <span className="text-[10px] text-slate-400">{item.date}</span>
+                  </div>
+
+                  {item.answer ? (
+                    <div className="bg-rose-50 p-3 rounded-lg border border-rose-100 text-xs text-rose-900 flex items-start space-x-2">
+                      <ShieldCheck className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold block">Shop Answer:</span>
+                        {item.answer}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-amber-600 italic">Awaiting shopkeeper reply...</p>
+                  )}
+
+                  {/* Admin Reply Box */}
+                  {isAdminLoggedIn && !item.answer && (
+                    <div className="pt-2 flex items-center space-x-2">
+                      <input 
+                        type="text" 
+                        placeholder="Write answer as admin..."
+                        value={adminAnswerText[item.id] || ''}
+                        onChange={(e) => setAdminAnswerText({ ...adminAnswerText, [item.id]: e.target.value })}
+                        className="flex-1 px-3 py-1 bg-amber-50 border border-amber-200 rounded-lg text-xs"
+                      />
+                      <button 
+                        onClick={() => handleAdminAnswerSubmit(item.id)}
+                        className="bg-amber-600 text-white px-3 py-1 rounded-lg text-xs font-bold"
+                      >
+                        Reply
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ================= HOLDS TAB (ADMIN ONLY) ================= */}
+        {activeTab === 'holds' && isAdminLoggedIn && (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200">
+            <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center space-x-2">
+              <BookmarkPlus className="w-5 h-5 text-amber-600" />
+              <span>Customer Item Hold Requests</span>
+            </h3>
+
+            {holdsList.length === 0 ? (
+              <p className="text-xs text-slate-500 py-6 text-center">No active customer hold requests yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-600 border-b border-slate-200">
+                      <th className="p-3">Date</th>
+                      <th className="p-3">Product Name</th>
+                      <th className="p-3">Price</th>
+                      <th className="p-3">Customer Name</th>
+                      <th className="p-3">Customer Phone</th>
+                      <th className="p-3">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {holdsList.map((hold) => (
+                      <tr key={hold.id} className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="p-3 text-slate-500">{hold.date}</td>
+                        <td className="p-3 font-bold text-slate-800">{hold.productName}</td>
+                        <td className="p-3 font-semibold text-rose-600">₹{hold.price}</td>
+                        <td className="p-3 font-medium text-slate-700">{hold.customerName}</td>
+                        <td className="p-3 text-slate-700 font-mono">{hold.customerPhone}</td>
+                        <td className="p-3">
+                          <button 
+                            onClick={() => setHoldsList(holdsList.filter(h => h.id !== hold.id))}
+                            className="bg-emerald-100 hover:bg-emerald-200 text-emerald-800 px-2.5 py-1 rounded-md font-bold"
+                          >
+                            Complete / Clear
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+      </main>
+
+      {/* --- CUSTOMER AUTH MODAL (FIREBASE INTEGRATED) --- */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
+            <button 
+              onClick={() => setShowAuthModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center mb-6">
+              <div className="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3">
+                <User className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-extrabold text-slate-900">
+                {authMode === 'login' ? 'Customer Sign In' : 'Create Customer Account'}
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Connected to Pratima Store Firebase Project
+              </p>
+            </div>
+
+            {/* Google Sign-In Button */}
+            <button 
+              onClick={handleGoogleSignIn}
+              className="w-full mb-4 flex items-center justify-center space-x-3 bg-white border border-slate-300 hover:bg-slate-50 py-2.5 rounded-xl font-semibold text-sm text-slate-700 shadow-xs transition"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              <span>Continue with Google</span>
+            </button>
+
+            <div className="flex items-center my-4">
+              <div className="flex-1 border-t border-slate-200"></div>
+              <span className="px-3 text-xs text-slate-400 uppercase font-semibold">or email</span>
+              <div className="flex-1 border-t border-slate-200"></div>
+            </div>
+
+            {/* Email / Password Form */}
+            <form onSubmit={handleEmailAuth} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
+                <input 
+                  type="email" 
+                  required
+                  placeholder="name@example.com"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:bg-white"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Password</label>
+                <input 
+                  type="password" 
+                  required
+                  placeholder="••••••••"
+                  value={authPass}
+                  onChange={(e) => setAuthPass(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none focus:bg-white"
+                />
+              </div>
+
+              {authMessage.text && (
+                <div className={`p-2.5 rounded-lg text-xs font-medium ${
+                  authMessage.type === 'error' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'
+                }`}>
+                  {authMessage.text}
+                </div>
+              )}
+
+              <button 
+                type="submit"
+                className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl text-sm shadow-sm transition"
+              >
+                {authMode === 'login' ? 'Sign In with Email' : 'Create Account'}
+              </button>
+            </form>
+
+            <div className="mt-4 text-center">
+              <button 
+                onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
+                className="text-xs text-rose-600 hover:underline font-semibold"
+              >
+                {authMode === 'login' 
+                  ? "Don't have an account? Sign up free" 
+                  : "Already have an account? Sign in"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- CUSTOMER HOLD RESERVATION MODAL --- */}
+      {holdingProduct && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
+            <button 
+              onClick={() => setHoldingProduct(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center space-x-3 mb-4">
+              <img src={holdingProduct.image} alt="Product" className="w-16 h-16 rounded-xl object-cover" />
+              <div>
+                <span className="text-[10px] bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded">
+                  {holdingProduct.category}
+                </span>
+                <h4 className="font-bold text-slate-900 text-sm line-clamp-1">{holdingProduct.name}</h4>
+                <p className="text-base font-extrabold text-rose-600">₹{holdingProduct.price}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 mb-4 bg-amber-50 p-3 rounded-xl border border-amber-200">
+              📌 Reserve this item to inspect or purchase in store. We will hold it for 24 hours under your phone number!
+            </p>
+
+            <form onSubmit={handleReserveSubmit} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Your Name *</label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="Enter your full name"
+                  value={holdCustomerName}
+                  onChange={(e) => setHoldCustomerName(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">WhatsApp / Phone Number *</label>
+                <input 
+                  type="tel" 
+                  required
+                  placeholder="e.g. 9876543210"
+                  value={holdCustomerPhone}
+                  onChange={(e) => setHoldCustomerPhone(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm"
+                />
+              </div>
+
+              <button 
+                type="submit"
+                className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl text-sm shadow-sm"
+              >
+                Confirm Store Reservation
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- SECRET ADMIN PORTAL ACCESS MODAL --- */}
+      {showAdminModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl relative">
+            <button 
+              onClick={() => setShowAdminModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="text-center mb-5">
+              <div className="w-12 h-12 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto mb-2">
+                <Lock className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-extrabold text-slate-900">
+                {!savedAdminPassword ? 'Initial Admin Setup' : 'Admin Portal Access'}
+              </h3>
+              <p className="text-xs text-slate-500">
+                {!savedAdminPassword 
+                  ? 'Set your secret shopkeeper password for first time login.' 
+                  : 'Enter password to access store settings & inventory.'}
+              </p>
+            </div>
+
+            <form onSubmit={handleAdminAuthSubmit} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {!savedAdminPassword ? 'Create Secret Password' : 'Admin Password'}
+                </label>
+                <input 
+                  type="password" 
+                  required
+                  placeholder="••••••••"
+                  value={adminPasswordInput}
+                  onChange={(e) => setAdminPasswordInput(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none"
+                />
+              </div>
+
+              {!savedAdminPassword && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Confirm Password</label>
+                  <input 
+                    type="password" 
+                    required
+                    placeholder="••••••••"
+                    value={adminConfirmPassword}
+                    onChange={(e) => setAdminConfirmPassword(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-sm focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {adminAuthError && (
+                <p className="text-xs text-red-600 font-medium">{adminAuthError}</p>
+              )}
+
+              <button 
+                type="submit"
+                className="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 rounded-xl text-sm shadow-sm transition"
+              >
+                {!savedAdminPassword ? 'Create Admin Password' : 'Unlock Dashboard'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* --- FOOTER --- */}
+      <footer className="bg-slate-900 text-slate-400 py-8 px-4 border-t border-slate-800">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+          
+          <div className="flex items-center space-x-2">
+            <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
+            <span>Near Central Market Road, Home Boutique Store, India</span>
+          </div>
+
+          {/* Secret Lock Icon inside Footer Text */}
+          <div className="flex items-center space-x-2">
+            <span>PRATIMA'S HOMESALE STORE • All Rights Reserved</span>
+            <button 
+              onClick={() => setShowAdminModal(true)}
+              title="Admin Portal Access (Ctrl + Shift + A)"
+              className="text-slate-600 hover:text-amber-400 transition p-1"
+            >
+              <Lock className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="text-slate-500 text-[11px]">
+            Firebase Auth Configured • 100% Free Plan
+          </div>
+        </div>
+      </footer>
+
+    </div>
+  );
+}
